@@ -1,0 +1,2 @@
+chmod +x run_label_convert.sh
+./run_label_convert.sh
