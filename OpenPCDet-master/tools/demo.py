@@ -2,17 +2,21 @@ import argparse
 import glob
 from pathlib import Path
 
-try:
-    import open3d
-    from visual_utils import open3d_vis_utils as V
-    OPEN3D_FLAG = True
-except:
-    import mayavi.mlab as mlab
-    from visual_utils import visualize_utils as V
-    OPEN3D_FLAG = False
+
+# Visualization imports are disabled for headless/CPU environments
+# try:
+#     import open3d
+#     from visual_utils import open3d_vis_utils as V
+#     OPEN3D_FLAG = True
+# except:
+#     import mayavi.mlab as mlab
+#     from visual_utils import visualize_utils as V
+#     OPEN3D_FLAG = False
 
 import numpy as np
 import torch
+import os
+import json
 
 from pcdet.config import cfg, cfg_from_yaml_file
 from pcdet.datasets import DatasetTemplate
@@ -90,20 +94,28 @@ def main():
     model.load_params_from_file(filename=args.ckpt, logger=logger, to_cpu=True)
     model.cuda()
     model.eval()
+
+
+    output_dir = os.path.join(os.path.dirname(__file__), 'output')
+    os.makedirs(output_dir, exist_ok=True)
+
     with torch.no_grad():
         for idx, data_dict in enumerate(demo_dataset):
-            logger.info(f'Visualized sample index: \t{idx + 1}')
+            logger.info(f'Processed sample index: \t{idx + 1}')
             data_dict = demo_dataset.collate_batch([data_dict])
             load_data_to_gpu(data_dict)
             pred_dicts, _ = model.forward(data_dict)
 
-            V.draw_scenes(
-                points=data_dict['points'][:, 1:], ref_boxes=pred_dicts[0]['pred_boxes'],
-                ref_scores=pred_dicts[0]['pred_scores'], ref_labels=pred_dicts[0]['pred_labels']
-            )
-
-            if not OPEN3D_FLAG:
-                mlab.show(stop=True)
+            # Save predictions to JSON file
+            pred = pred_dicts[0]
+            result = {
+                'boxes': pred['pred_boxes'].cpu().numpy().tolist() if 'pred_boxes' in pred else [],
+                'scores': pred['pred_scores'].cpu().numpy().tolist() if 'pred_scores' in pred else [],
+                'labels': pred['pred_labels'].cpu().numpy().tolist() if 'pred_labels' in pred else []
+            }
+            out_path = os.path.join(output_dir, f'sample_{idx + 1}.json')
+            with open(out_path, 'w') as f:
+                json.dump(result, f, indent=2)
 
     logger.info('Demo done.')
 
